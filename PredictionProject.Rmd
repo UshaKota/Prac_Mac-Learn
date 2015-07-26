@@ -1,0 +1,163 @@
+---
+title: "Practical Machine Learning Course project: Qualitative Activity Recognition - Weight Lifting Exercises "
+author: "UshaKiran.Kota"
+date: "July 23, 2015"
+output: html_document
+---
+# Executive Summary
+The goal of course project as part of Coursera/JHBSPH/DASI/Pracitcal Machine Learning is to build and train a classifier for qualitative activity recognition of weight lifting exercises. The classifier should be able to predict if an exercise of a Class (A,B,C,D,E) has been done as prescribed and be able to feedback in real time to the subject abou the incorrect metrics, the data is collected from MSKinetic sensors embedded within the accelerometers on the belt, forearm, arm, and dumbell of 6 volunteers(subjects). The subjects were asked to perform barbell lifts correctly and incorrectly in 5 different ways:
+
+- Class A: exactly according to the specification
+- Class B: throwing the elbows to the front
+- Class C: lifting the dumbbell only halfway
+- Class D: lowering the dumbbell only halfway
+- Class E: throwing the hips to the front
+Hence the outcome of the prediction is the accuracy capture the errors in a Class of execise when the subject performs it incorrectly
+The data for the analysis is made available at http://groupware.les.inf.puc-rio.br/har and details of the original work can be found at :http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf
+
+The chunks below describe the strategy of data cleaning, feature selection, classifier selection, and accuracy evaluation
+```{r,load_libraries,warning=F,message=FALSE,eval=F, echo = T}
+library(AppliedPredictiveModeling)
+library(caret)
+library(rpart)
+library(rattle)
+library(pgmm)
+library(ElemStatLearn)
+library(tree)
+
+library(doParallel)
+registerDoParallel(cores=2)
+
+
+
+#ref:https://class.coursera.org/predmachlearn-030/forum/thread?thread_id=25
+
+
+```
+## 1. Discuss the classifier selection
+The data set divided into a training set and testing set for ease of classification
+Each set contained 160 set of features. Data cleaning strategies applied were :
+* Eliminate columns with missing values
+* Include only numeric/integer features
+* Eliminate less important columns that had character/categorical values or majority as blanks
+* optional : eliminate columns of high Correlation
+
+
+```{r, Elim_Redun,echo=T,eval=F}
+#ref://http://machinelearningmastery.com/feature-selection-with-the-caret-r-package/
+# set.seed(7)
+# 
+# # calculate correlation matrix
+# #select further only numeric ,integer columns, except the "classe" variable
+# 
+# training.nona<-training[,colSums(is.na(training)) < 0.5*nrow(training)]
+# 
+# testing.nona<-testing[,colSums(is.na(testing)) < 0.5*nrow(testing)]
+# 
+# training.num<-training.nona[, sapply(training.nona[,-93], class) %in% c('numeric', 'integer')]
+# 
+# #remove cols 1:4 -- not very useful for the model
+# training.nf<-training.num[,-c(1:4)]
+# 
+# testing.num<-testing.nona[, sapply(testing.nona, class) %in% c('numeric', 'integer')]
+# testing.nf<-testing.num[,-c(1:4)]
+# 
+# 
+# #reduces the train and test set to 53 variables
+# 
+# #now remove the highly correlated features
+# 
+# correlationMatrix <- cor(training.nf[,-53])
+# 
+# correlationMatrix.t <- cor(testing.nf)
+# 
+# # find attributes that are highly corrected (ideally >0.75)
+# highlyCorrelated.tr <- findCorrelation(correlationMatrix, cutoff=0.9)
+# # print indexes of highly correlated attributes
+# print(highlyCorrelated.tr)
+# 
+# 
+# highlyCorrelated.test<- findCorrelation(correlationMatrix.t, cutoff=0.9)
+# 
+# print(highlyCorrelated.test)
+# 
+# training.nf$classe <-as.factor(training.nf$classe)
+# 
+# training.nf<-training.nf[, -highlyCorrelated.tr]
+# 
+# testing.nf<-testing.nf[, -highlyCorrelated.test]
+
+
+
+```
+## 2. Model training
+* GBM and RF method of classification were picked intuitively for training the classifiers based on the large size of data and precision accuracy requirements.
+* Initially a random sample of 1000 records was used to probe the training set with both GBM and RF methods
+* An automatic 5-fold Cross validation mechanism is emplyoyed using CARET's trainControl()
+* With a sample size of 1000 values, both GBM and RF seem to yeild almost the same accuracy results of 88 - 85%
+* However RF seemed to yeild a better result with increased sample size and selected feature set
+* The final model was trained using partition of 60/40 in the data and cross validation with 5 folds. 
+
+```{r,discuss_model,eval = T, echo = T}
+
+# set.seed(876)
+# inTraining <- createDataPartition(training.nf$classe, p = .60, list = FALSE)
+# rf.train <- training.nf[ inTraining,]
+# rf.test  <- training.nf[-inTraining,]
+# 
+# # train.sample <- training.nf[sample(1:nrow(training.nf), 6000,
+# #                                      replace=FALSE),]
+# 
+#  fitControl <- trainControl(## 5-fold CV
+#   method = "repeatedcv",
+#   number = 5,
+#   ## repeated once
+#   repeats = 1,
+#   verboseIter =F )
+#  
+# rf.model <- train(classe~., data=rf.train , method="rf",prox=T,trControl=fitControl)
+# saveRDS(rf.model, file="rfmodel_File.rds")
+
+```
+
+## 3.Exploratory Analysis
+### 1. Read the model
+```{r,read_model,cache=TRUE}
+#Assumes tha the model is pre-built and only model features are discussed here and files are in the user's working directory
+
+rf_model_file<-"rfmodel_File.rds"
+if(file.exists(rf_model_file)) {
+  #read it
+  rf_model<-readRDS(rf_model_file)
+  
+  
+}
+```
+
+### 3. Check the accuracy and Variable Importance
+```{r, Var_Imp,fig.height = 6, fig.width =8, cache = T,echo=T}
+
+print(rf_model$results)
+# # # estimate variable importance
+importance <- varImp(rf_model)
+# # # summarize importance
+print(importance)
+# # plot importance
+plot(importance)
+
+```
+
+
+### 4.Out of Sample Error
+
+```{r, Cf_matric,echo=T}
+#confusionMatrix(rf_model$pred) #to be done
+
+print(rf_model$results$Accuracy)
+
+print(rf_model$results$Kappa)
+#to do :prediction on 40% data
+
+
+
+```
